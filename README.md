@@ -1,6 +1,5 @@
 ---
 title: Ticket Env Environment Server
-emoji: 🥋
 colorFrom: gray
 colorTo: red
 sdk: docker
