@@ -37,10 +37,10 @@ except Exception as e:  # pragma: no cover
 
 try:
     from models import TicketAction, TicketObservation
-    from .ticket_env_environment import TicketEnvironment
+    from ticket_env_environment import TicketEnvironment
 except ModuleNotFoundError:
-    from models import TicketAction, TicketObservation
-    from server.ticket_env_environment import TicketEnvironment
+    from ..models import TicketAction, TicketObservation
+    from .ticket_env_environment import TicketEnvironment
 
 
 # Create the app with web interface and README integration

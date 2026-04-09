@@ -2,7 +2,7 @@ import asyncio
 import os
 import requests
 
-BASE_URL = os.getenv("API_BASE_URL", "https://vinay3111-ticket-env.hf.space")
+BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 
 def log_start(task, env, model):
@@ -26,27 +26,39 @@ async def main():
 
     try:
         # RESET
-        res = requests.post(f"{BASE_URL}/reset", timeout=5)
+        res = requests.post(f"{BASE_URL}/reset", timeout=10)
         res.raise_for_status()
+        data = res.json()
 
-        actions = [
-            {"ticket_id": 1, "agent_id": 1},
-            {"ticket_id": 2, "agent_id": 2},
-        ]
+        tickets = data.get("observation", {}).get("tickets", [])
 
-        for i, action in enumerate(actions, 1):
+        if not tickets:
+            raise Exception("No tickets received")
+
+        for i, ticket in enumerate(tickets, 1):
             try:
+                # decision logic
+                if ticket.get("category") == "billing":
+                    agent_id = 1
+                else:
+                    agent_id = 2
+
+                action = {
+                    "ticket_id": ticket.get("id"),
+                    "agent_id": agent_id
+                }
+
                 res = requests.post(
                     f"{BASE_URL}/step",
                     json={"action": action},
-                    timeout=5
+                    timeout=10
                 )
                 res.raise_for_status()
 
                 data = res.json()
 
                 reward = float(data.get("reward", 0))
-                done = data.get("done", False)
+                done = bool(data.get("done", False))
 
                 rewards.append(reward)
                 steps = i
@@ -56,21 +68,16 @@ async def main():
                 if done:
                     break
 
-            except Exception as e:
-                log_step(i, "assign", 0.0, True, str(e))
+            except Exception as step_error:
+                log_step(i, "assign", 0.0, True, str(step_error))
                 break
 
     except Exception as e:
-        print(f"[ERROR] Failed to connect: {e}")
+        print(f"[ERROR] {e}")
         log_end(False, steps, 0.0, [])
         return
 
-    # FINAL SCORE
-    if rewards:
-        score = sum(rewards) / len(rewards)
-    else:
-        score = 0.0
-
+    score = sum(rewards) / len(rewards) if rewards else 0.0
     success = score > 0.5
 
     log_end(success, steps, score, rewards)

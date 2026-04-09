@@ -14,7 +14,7 @@ tags:
 
 A real-world ticket routing environment where an AI agent assigns customer support tickets to the most suitable agents based on skills and categories.
 
-## 🏆 Key Features
+## Key Features
 
 - Real-world task: customer support ticket routing
 - Structured RL environment with step/reset/state API
@@ -260,9 +260,9 @@ ticket_env/
     ├── app.py             # FastAPI application (HTTP + WebSocket endpoints)
     └── Dockerfile         # Container image definition
 ```
-# 🎫 Ticket Routing OpenEnv Environment
+#  Ticket Routing OpenEnv Environment
 
-## 📌 Overview
+## Overview
 
 This project implements a **real-world customer support ticket routing system** using the OpenEnv framework.
 
@@ -270,7 +270,7 @@ The environment simulates how support tickets are assigned to agents based on th
 
 ---
 
-## 🎯 Objective
+##  Objective
 
 Train and evaluate AI agents to:
 
@@ -280,7 +280,7 @@ Train and evaluate AI agents to:
 
 ---
 
-## ⚙️ Environment Design
+##  Environment Design
 
 ### 🔹 Action Space
 
@@ -306,29 +306,29 @@ Train and evaluate AI agents to:
 
 ### 🔹 Reward Function
 
-* ✅ Correct assignment → **+1.0**
-* ❌ Incorrect assignment → **-0.5**
-* ❌ Invalid action → **-1.0**
+*  Correct assignment **+1.0**
+*  Incorrect assignment  **-0.5**
+*  Invalid action  **-1.0**
 
 Provides **dense reward signals** to guide learning.
 
 ---
 
-## 🧪 Tasks
+##  Tasks
 
-### 🟢 Easy
+### Easy
 
 * Small number of tickets
 * Direct mapping between ticket category and agent skill
 * Goal: basic correct assignment
 
-### 🟡 Medium
+### Medium
 
 * Multiple tickets
 * Requires sequential decision making
 * Goal: maintain accuracy across steps
 
-### 🔴 Hard
+### Hard
 
 * Full completion required
 * Penalizes incorrect assignments
@@ -336,7 +336,7 @@ Provides **dense reward signals** to guide learning.
 
 ---
 
-## 📊 Grading
+## Grading
 
 Each task includes a **deterministic grader**:
 
@@ -346,7 +346,7 @@ Each task includes a **deterministic grader**:
 
 ---
 
-## 🚀 Setup & Run
+##  Setup & Run
 
 ```bash
 pip install openenv-core
@@ -355,7 +355,7 @@ uv run server
 
 ---
 
-## 🌐 Deployment
+##  Deployment
 
 Deployed on Hugging Face Spaces:
 
@@ -363,7 +363,7 @@ Deployed on Hugging Face Spaces:
 
 ---
 
-## 🤖 Inference
+## Inference
 
 Run:
 
@@ -373,7 +373,7 @@ python inference.py
 
 ---
 
-## 💡 Motivation
+##  Motivation
 
 Ticket routing is a real-world operational problem in:
 
@@ -385,7 +385,7 @@ This environment provides a structured way to train AI agents for such tasks.
 
 ---
 
-## 🏁 Baseline Performance
+## Baseline Performance
 
 * Easy: ~1.0
 * Medium: ~0.8
@@ -393,7 +393,7 @@ This environment provides a structured way to train AI agents for such tasks.
 
 ---
 
-## 📌 Future Improvements
+##  Future Improvements
 
 * Add dynamic ticket arrival
 * Introduce agent workload constraints

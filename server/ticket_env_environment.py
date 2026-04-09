@@ -49,24 +49,26 @@ class TicketEnvironment(Environment):
          self._state = State(episode_id=str(uuid4()), step_count=0)
          self._reset_count = 0
 
-    # ✅ ADD THIS
-         self.tickets = []
+    # ADD THIS
+         self.tickets =[]
          self.agents = []
   
     def reset(self) -> TicketObservation:
-      self._state = State(episode_id=str(uuid4()), step_count=0)
+     self._state = State(episode_id=str(uuid4()), step_count=0)
 
-      TicketEnvironment.tickets = [
-        {"id": 1, "category": "billing", "priority": 1},
+     TicketEnvironment.tickets = [
+        {"id": 1, "category": "billing", "priority": 3},
         {"id": 2, "category": "tech", "priority": 2},
+        {"id": 3, "category": "billing", "priority": 1},
     ]
 
-      TicketEnvironment.agents = [
+     TicketEnvironment.agents = [
         {"id": 1, "skills": ["billing"]},
         {"id": 2, "skills": ["tech"]},
+        {"id": 3, "skills": ["billing", "tech"]},
     ]
 
-      return TicketObservation(
+     return TicketObservation(
         tickets=TicketEnvironment.tickets,
         agents=TicketEnvironment.agents,
         done=False,
@@ -89,7 +91,13 @@ class TicketEnvironment(Environment):
             reward=-1.0
         )
 
-      reward = 1.0 if ticket["category"] in agent["skills"] else -0.5
+      if ticket["category"] in agent["skills"]:
+       reward = 1.0 * ticket["priority"]   # priority-based reward
+      else:
+       reward = -0.5
+
+      if len(TicketEnvironment.tickets) == 1 and reward > 0:
+       reward += 1.0  # completion bonus  # completion bonus
 
       TicketEnvironment.tickets = [
         t for t in TicketEnvironment.tickets if t["id"] != ticket_id
