@@ -36,12 +36,13 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 try:
+    # HF / Docker (flat structure)
     from models import TicketAction, TicketObservation
-    from ticket_env_environment import TicketEnvironment
-except ModuleNotFoundError:
+    from server.ticket_env_environment import TicketEnvironment
+except ImportError:
+    # Local development
     from ..models import TicketAction, TicketObservation
     from .ticket_env_environment import TicketEnvironment
-
 
 # Create the app with web interface and README integration
 app = create_app(
