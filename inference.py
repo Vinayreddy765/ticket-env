@@ -1,14 +1,8 @@
 import asyncio
 import os
-from openai import OpenAI
+import requests
 
-from openenv.core.env_client import EnvClient
-
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
-MODEL_NAME = os.getenv("MODEL_NAME", "baseline")
-API_KEY = os.getenv("HF_TOKEN", "dummy")
-
-client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+BASE_URL = os.getenv("API_BASE_URL", "https://vinay3111-ticket-env.hf.space")
 
 
 def log_start(task, env, model):
@@ -25,35 +19,58 @@ def log_end(success, steps, score, rewards):
 
 
 async def main():
-    env = EnvClient(base_url=API_BASE_URL)
-
     rewards = []
     steps = 0
 
-    log_start("easy", "ticket_env", MODEL_NAME)
+    log_start("easy", "ticket_env", "baseline")
 
-    await env.reset()
+    try:
+        # RESET
+        res = requests.post(f"{BASE_URL}/reset", timeout=5)
+        res.raise_for_status()
 
-    actions = [
-        {"ticket_id": 1, "agent_id": 1},
-        {"ticket_id": 2, "agent_id": 2},
-    ]
+        actions = [
+            {"ticket_id": 1, "agent_id": 1},
+            {"ticket_id": 2, "agent_id": 2},
+        ]
 
-    for i, action in enumerate(actions, 1):
-        result = await env.step(action)
+        for i, action in enumerate(actions, 1):
+            try:
+                res = requests.post(
+                    f"{BASE_URL}/step",
+                    json={"action": action},
+                    timeout=5
+                )
+                res.raise_for_status()
 
-        reward = result["reward"]
-        done = result["done"]
+                data = res.json()
 
-        rewards.append(reward)
-        steps = i
+                reward = float(data.get("reward", 0))
+                done = data.get("done", False)
 
-        log_step(i, "assign", reward, done, "null")
+                rewards.append(reward)
+                steps = i
 
-        if done:
-            break
+                log_step(i, "assign", reward, done, "null")
 
-    score = sum(rewards) / len(rewards)
+                if done:
+                    break
+
+            except Exception as e:
+                log_step(i, "assign", 0.0, True, str(e))
+                break
+
+    except Exception as e:
+        print(f"[ERROR] Failed to connect: {e}")
+        log_end(False, steps, 0.0, [])
+        return
+
+    # FINAL SCORE
+    if rewards:
+        score = sum(rewards) / len(rewards)
+    else:
+        score = 0.0
+
     success = score > 0.5
 
     log_end(success, steps, score, rewards)
