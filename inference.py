@@ -43,7 +43,7 @@ Return ONLY the agent_id (1, 2, or 3).
 """
     try:
         response = client.chat.completions.create(
-            model=os.environ["MODEL_NAME"],
+            model=os.environ.get("MODEL_NAME", "gpt-4o-mini"),
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
         )
@@ -55,9 +55,9 @@ Return ONLY the agent_id (1, 2, or 3).
 async def main():
     # Correct client setup
     client = OpenAI(
-        base_url=os.environ["API_BASE_URL"],
-        api_key=os.environ.get("HF_TOKEN") or os.environ.get("API_KEY")
-    )
+    base_url=os.environ["API_BASE_URL"],
+    api_key=os.environ["API_KEY"]
+)
 
     #  FORCE LLM CALL (MANDATORY FOR VALIDATOR)
     try:
