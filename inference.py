@@ -4,8 +4,8 @@ import requests
 from typing import List, Optional
 
 # ── ENV VARIABLES (STRICT) 
-API_BASE_URL = os.environ["API_BASE_URL"]   # LLM proxy
-API_KEY = os.environ["API_KEY"]
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
+API_KEY = os.environ.get("API_KEY", "test-key")
 MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
 # ── YOUR HF SPACE (PUBLIC URL) 
@@ -35,7 +35,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]):
 
 # ── RAW LLM CALL (CRITICAL — PROXY DETECTION) 
 def llm_call(ticket: dict) -> int:
-    url = f"{API_BASE_URL}/chat/completions"
+    url = f"{API_BASE_URL}/v1/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {API_KEY}",
