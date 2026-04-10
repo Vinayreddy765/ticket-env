@@ -1,12 +1,14 @@
 import asyncio
 import os
+import requests
 from typing import List, Optional
-
 from openai import OpenAI
 
-from server.ticket_env_environment import TicketEnvironment
-from models import TicketAction
 
+# ENV (STRICT — DO NOT CHANGE)
+BASE_URL = os.environ["API_BASE_URL"]
+API_KEY = os.environ["API_KEY"]
+MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
 TASK_NAME = "ticket-routing"
 BENCHMARK = "ticket_env"
@@ -43,58 +45,68 @@ Return ONLY the agent_id (1, 2, or 3).
 """
     try:
         response = client.chat.completions.create(
-            model=os.environ.get("MODEL_NAME", "gpt-4o-mini"),
+            model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
         )
         return int(response.choices[0].message.content.strip())
     except Exception:
-        return 1
+        return 1  # fallback
 
 
 async def main():
-    # Correct client setup
+    #  LLM CLIENT (MANDATORY)
     client = OpenAI(
-    base_url=os.environ["API_BASE_URL"],
-    api_key=os.environ["API_KEY"]
-)
+        base_url=BASE_URL,
+        api_key=API_KEY
+    )
 
-    #  FORCE LLM CALL (MANDATORY FOR VALIDATOR)
+    # FORCE ONE LLM CALL (ensures proxy detection)
     try:
         client.chat.completions.create(
-            model=os.environ["MODEL_NAME"],
+            model=MODEL_NAME,
             messages=[{"role": "user", "content": "hello"}],
             max_tokens=5
         )
     except Exception:
         pass
 
-    #  ENV MUST BE OUTSIDE TRY
-    env = TicketEnvironment()
-
     rewards: List[float] = []
     steps = 0
     success = False
 
-    log_start(TASK_NAME, BENCHMARK, os.environ.get("MODEL_NAME", "unknown"))
+    log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
 
     try:
-        result = env.reset()
-        tickets = result.tickets
+        # RESET via HTTP
+        res = requests.post(f"{BASE_URL}/reset", timeout=10)
+        res.raise_for_status()
+        data = res.json()
+
+        tickets = data.get("observation", {}).get("tickets", [])
 
         for i, ticket in enumerate(tickets, 1):
             try:
+                #  LLM decision
                 agent_id = get_agent_from_llm(client, ticket)
 
-                action = TicketAction(
-                    ticket_id=ticket["id"],
-                    agent_id=agent_id
+                action = {
+                    "ticket_id": ticket["id"],
+                    "agent_id": agent_id
+                }
+
+                # STEP via HTTP
+                res = requests.post(
+                    f"{BASE_URL}/step",
+                    json={"action": action},
+                    timeout=10
                 )
+                res.raise_for_status()
 
-                result = env.step(action)
+                data = res.json()
 
-                reward = result.reward or 0.0
-                done = result.done
+                reward = float(data.get("reward", 0))
+                done = bool(data.get("done", False))
 
                 rewards.append(reward)
                 steps = i
@@ -109,7 +121,6 @@ async def main():
                 break
 
         score = sum(rewards) / (len(rewards) if rewards else 1)
-        score = max(0.0, min(score, 1.0))
         success = score > 0.5
 
     except Exception as e:
