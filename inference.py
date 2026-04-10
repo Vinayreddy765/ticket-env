@@ -5,13 +5,17 @@ from typing import List, Optional
 from openai import OpenAI
 
 
-# ENV (STRICT — DO NOT CHANGE)
-BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-MODEL_NAME = os.environ.get("MODEL_NAME", "gpt-4o-mini")
+# ── LLM proxy (injected by hackathon validator) ───────────────────────────────
+API_BASE_URL = os.environ["API_BASE_URL"]   # e.g. https://litellm-proxy.../v1
+API_KEY      = os.environ["API_KEY"]
+MODEL_NAME   = os.environ.get("MODEL_NAME", "gpt-4o-mini")
 
-TASK_NAME = "ticket-routing"
-BENCHMARK = "ticket_env"
+# ── Ticket environment server (your FastAPI app running locally) ──────────────
+# The env server is NOT the LLM proxy — it runs separately on port 8000
+ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:8000")
+
+TASK_NAME  = "ticket-routing"
+BENCHMARK  = "ticket_env"
 
 
 def log_start(task: str, env: str, model: str):
@@ -20,17 +24,25 @@ def log_start(task: str, env: str, model: str):
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]):
     error_val = error if error else "null"
-    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error_val}", flush=True)
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} "
+        f"done={str(done).lower()} error={error_val}",
+        flush=True,
+    )
 
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]):
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} "
+        f"score={score:.2f} rewards={rewards_str}",
+        flush=True,
+    )
 
 
 def get_agent_from_llm(client: OpenAI, ticket: dict) -> int:
-    prompt = f"""
-You are a ticket routing assistant.
+    """Ask the LLM proxy which agent should handle this ticket."""
+    prompt = f"""You are a ticket routing assistant.
 
 Ticket:
 - id: {ticket['id']}
@@ -41,13 +53,14 @@ Agents:
 2: tech
 3: billing, tech
 
-Return ONLY the agent_id (1, 2, or 3).
-"""
+Return ONLY the agent_id (1, 2, or 3). No explanation."""
+
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
+            max_tokens=5,
         )
         return int(response.choices[0].message.content.strip())
     except Exception:
@@ -55,58 +68,47 @@ Return ONLY the agent_id (1, 2, or 3).
 
 
 async def main():
-    #  LLM CLIENT (MANDATORY)
+    # ── Initialise LLM client pointing at the proxy ───────────────────────────
     client = OpenAI(
-        base_url=BASE_URL,
-        api_key=API_KEY
+        base_url=API_BASE_URL,   # LiteLLM proxy
+        api_key=API_KEY,
     )
 
-    # FORCE ONE LLM CALL (ensures proxy detection)
-    try:
-        client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": "hello"}],
-            max_tokens=5
-        )
-    except Exception:
-        pass
-
     rewards: List[float] = []
-    steps = 0
+    steps   = 0
+    score   = 0.0
     success = False
 
     log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
 
     try:
-        # RESET via HTTP
-        res = requests.post(f"{BASE_URL}/reset", timeout=10)
+        # ── Reset the TICKET ENV server (not the LLM proxy) ──────────────────
+        res = requests.post(f"{ENV_BASE_URL}/reset", timeout=10)
         res.raise_for_status()
-        data = res.json()
-
+        data    = res.json()
         tickets = data.get("observation", {}).get("tickets", [])
 
         for i, ticket in enumerate(tickets, 1):
             try:
-                #  LLM decision
+                # LLM call goes through the proxy ✓
                 agent_id = get_agent_from_llm(client, ticket)
 
                 action = {
                     "ticket_id": ticket["id"],
-                    "agent_id": agent_id
+                    "agent_id":  agent_id,
                 }
 
-                # STEP via HTTP
+                # Step call goes to the ticket env server ✓
                 res = requests.post(
-                    f"{BASE_URL}/step",
+                    f"{ENV_BASE_URL}/step",
                     json={"action": action},
-                    timeout=10
+                    timeout=10,
                 )
                 res.raise_for_status()
-
                 data = res.json()
 
                 reward = float(data.get("reward", 0))
-                done = bool(data.get("done", False))
+                done   = bool(data.get("done", False))
 
                 rewards.append(reward)
                 steps = i
@@ -120,7 +122,7 @@ async def main():
                 log_step(i, "error", 0.0, True, str(e))
                 break
 
-        score = sum(rewards) / (len(rewards) if rewards else 1)
+        score   = sum(rewards) / (len(rewards) if rewards else 1)
         success = score > 0.5
 
     except Exception as e:
