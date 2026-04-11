@@ -5,22 +5,18 @@ from typing import List, Dict
 from openai import OpenAI
 
 
-# ── Credentials — exactly as hackathon team specified ─────────────────────────
-API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL")
-MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "https://vinay3111-ticket-env.hf.space")
+# ── Credentials — matching passing participant pattern exactly ─────────────────
+api_key      = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "dummy-key")
+api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
-if not API_BASE_URL:
-    raise ValueError("API_BASE_URL not set by validator")
-if not API_KEY:
-    raise ValueError("HF_TOKEN / API_KEY not set by validator")
+# ── Env server runs inside Docker on localhost:8000 ───────────────────────────
+env_base_url = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 
 TASK_NAME = "ticket-routing"
 BENCHMARK = "ticket_env"
 
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 def log_start(task, env, model):
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
@@ -31,21 +27,18 @@ def log_end(success, steps, score, rewards):
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={','.join(f'{r:.2f}' for r in rewards)}", flush=True)
 
 
-# ── Safe parser ───────────────────────────────────────────────────────────────
 def safe_parse_agent(text: str) -> int:
     for ch in text:
         if ch in "123":
             return int(ch)
-    return 3  # safe fallback
+    return 3
 
 
-# ── Batch LLM routing ─────────────────────────────────────────────────────────
 def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
     ticket_str = "\n".join(
         [f"{t['id']}: category={t['category']} priority={t.get('priority', 'normal')}"
          for t in tickets]
     )
-
     prompt = (
         "You are an intelligent ticket routing system.\n\n"
         "Routing rules:\n"
@@ -58,9 +51,8 @@ def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
         "Example:\n"
         "1:2\n2:1\n3:3\n"
     )
-
     response = client.chat.completions.create(
-        model=MODEL_NAME,
+        model=model_name,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
         max_tokens=100,
@@ -82,7 +74,6 @@ def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
     return mapping
 
 
-# ── Single ticket LLM routing with retry ─────────────────────────────────────
 def route_ticket_single(client: OpenAI, ticket: dict, retries: int = 2) -> int:
     prompt = (
         "You are a smart ticket router.\n"
@@ -94,11 +85,10 @@ def route_ticket_single(client: OpenAI, ticket: dict, retries: int = 2) -> int:
         f"Priority: {ticket.get('priority', 'normal')}\n\n"
         "Output ONLY a single digit: 1, 2, or 3."
     )
-
     for attempt in range(retries + 1):
         try:
             response = client.chat.completions.create(
-                model=MODEL_NAME,
+                model=model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0,
                 max_tokens=10,
@@ -106,42 +96,38 @@ def route_ticket_single(client: OpenAI, ticket: dict, retries: int = 2) -> int:
             text = response.choices[0].message.content.strip()
             return safe_parse_agent(text)
         except Exception as e:
-            print(f"[DEBUG] Single LLM attempt {attempt + 1} failed: {e}", flush=True)
+            print(f"[DEBUG] Attempt {attempt + 1} failed: {e}", flush=True)
+    return 3
 
-    return 3  # final fallback
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 async def main():
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = OpenAI(base_url=api_base_url, api_key=api_key)
 
-    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
-    print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
-    print(f"[DEBUG] ENV_BASE_URL={ENV_BASE_URL}", flush=True)
+    print(f"[DEBUG] api_base_url={api_base_url}", flush=True)
+    print(f"[DEBUG] model_name={model_name}", flush=True)
+    print(f"[DEBUG] env_base_url={env_base_url}", flush=True)
 
     rewards: List[float] = []
     steps = 0
     score = 0.0
     success = False
 
-    log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
+    log_start(TASK_NAME, BENCHMARK, model_name)
 
     try:
-        # Reset env
-        print(f"[DEBUG] POST {ENV_BASE_URL}/reset", flush=True)
-        res = requests.post(f"{ENV_BASE_URL}/reset", timeout=30)
+        # Reset env on localhost (inside Docker)
+        print(f"[DEBUG] POST {env_base_url}/reset", flush=True)
+        res = requests.post(f"{env_base_url}/reset", timeout=30)
         res.raise_for_status()
         body    = res.json()
         obs     = body.get("observation", body)
         tickets = obs.get("tickets", [])
         print(f"[DEBUG] {len(tickets)} tickets received", flush=True)
 
-        # Route ALL tickets via LLM proxy (batch call)
-        print("[DEBUG] Batch routing via LLM proxy...", flush=True)
+        # Route all tickets via LLM proxy
         batch_mapping = route_tickets_batch(client, tickets)
         print(f"[DEBUG] Batch mapping: {batch_mapping}", flush=True)
 
-        # Execute each ticket
         for i, ticket in enumerate(tickets, 1):
             tid = ticket["id"]
 
@@ -152,10 +138,10 @@ async def main():
                 agent_id = route_ticket_single(client, ticket)
                 reason   = "single-llm"
 
-            print(f"[DEBUG] Ticket {tid} (cat={ticket['category']}) → agent {agent_id} via {reason}", flush=True)
+            print(f"[DEBUG] Ticket {tid} → agent {agent_id} via {reason}", flush=True)
 
             res = requests.post(
-                f"{ENV_BASE_URL}/step",
+                f"{env_base_url}/step",
                 json={"action": {"ticket_id": tid, "agent_id": agent_id}},
                 timeout=30,
             )
@@ -172,7 +158,6 @@ async def main():
             if done:
                 break
 
-        # ✅ Score capped at 0.99 max as required by hackathon
         raw_score = sum(rewards) / max(len(rewards), 1)
         score     = min(max(raw_score, 0.0), 0.99)
         success   = score > 0.5
