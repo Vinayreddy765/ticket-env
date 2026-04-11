@@ -7,9 +7,14 @@ from openai import OpenAI
 
 # ── Credentials — exactly as hackathon team specified ─────────────────────────
 API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "https://vinay3111-ticket-env.hf.space")
+
+if not API_BASE_URL:
+    raise ValueError("API_BASE_URL not set by validator")
+if not API_KEY:
+    raise ValueError("HF_TOKEN / API_KEY not set by validator")
 
 TASK_NAME = "ticket-routing"
 BENCHMARK = "ticket_env"
