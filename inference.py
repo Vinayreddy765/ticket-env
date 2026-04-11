@@ -1,15 +1,15 @@
 import asyncio
 import os
 import requests
-from typing import List, Optional, Dict
+from typing import List, Dict
 from openai import OpenAI
 
 
-# ── Credentials — strictly from environment, exactly as validator injects ──────
-API_KEY      = os.environ["API_KEY"]          # validator injects this
-API_BASE_URL = os.environ["API_BASE_URL"]     # validator injects this
-MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "https://vinay3111-ticket-env.hf.space")
+# ── Credentials — exactly as hackathon team specified ─────────────────────────
+API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "https://vinay3111-ticket-env.hf.space")
 
 TASK_NAME = "ticket-routing"
 BENCHMARK = "ticket_env"
@@ -34,7 +34,7 @@ def safe_parse_agent(text: str) -> int:
     return 3  # safe fallback
 
 
-# ── Batch LLM routing — ALL decisions go through the proxy ───────────────────
+# ── Batch LLM routing ─────────────────────────────────────────────────────────
 def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
     ticket_str = "\n".join(
         [f"{t['id']}: category={t['category']} priority={t.get('priority', 'normal')}"
@@ -77,7 +77,7 @@ def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
     return mapping
 
 
-# ── Single ticket LLM routing with retry (fallback if batch misses a ticket) ──
+# ── Single ticket LLM routing with retry ─────────────────────────────────────
 def route_ticket_single(client: OpenAI, ticket: dict, retries: int = 2) -> int:
     prompt = (
         "You are a smart ticket router.\n"
@@ -122,7 +122,7 @@ async def main():
     log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
 
     try:
-        # ── Reset env ─────────────────────────────────────────────────────────
+        # Reset env
         print(f"[DEBUG] POST {ENV_BASE_URL}/reset", flush=True)
         res = requests.post(f"{ENV_BASE_URL}/reset", timeout=30)
         res.raise_for_status()
@@ -131,16 +131,15 @@ async def main():
         tickets = obs.get("tickets", [])
         print(f"[DEBUG] {len(tickets)} tickets received", flush=True)
 
-        # ── Route ALL tickets via LLM proxy (batch call) ──────────────────────
+        # Route ALL tickets via LLM proxy (batch call)
         print("[DEBUG] Batch routing via LLM proxy...", flush=True)
         batch_mapping = route_tickets_batch(client, tickets)
         print(f"[DEBUG] Batch mapping: {batch_mapping}", flush=True)
 
-        # ── Execute each ticket ───────────────────────────────────────────────
+        # Execute each ticket
         for i, ticket in enumerate(tickets, 1):
             tid = ticket["id"]
 
-            # Use batch result — if missing, call LLM again for this ticket
             if tid in batch_mapping:
                 agent_id = batch_mapping[tid]
                 reason   = "batch-llm"
@@ -168,8 +167,10 @@ async def main():
             if done:
                 break
 
-        score   = min(max(sum(rewards) / max(len(rewards), 1), 0.0), 1.0)
-        success = score > 0.5
+        # ✅ Score capped at 0.99 max as required by hackathon
+        raw_score = sum(rewards) / max(len(rewards), 1)
+        score     = min(max(raw_score, 0.0), 0.99)
+        success   = score > 0.5
 
     except Exception as e:
         print(f"[ERROR] {e}", flush=True)
