@@ -51,8 +51,8 @@ app = create_app(
     TicketObservation,
     env_name="ticket_env",
     max_concurrent_envs=1,
-    enable_web=True  
 )
+
 
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
@@ -83,4 +83,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
     main(port=args.port)
+
+@app.get("/health")
+def health():
+    return "ok"
 
