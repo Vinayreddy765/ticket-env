@@ -1,11 +1,13 @@
 ---
-title: Ticket Env
-emoji: 🚀
-colorFrom: blue
-colorTo: green
+title: Ticket Env Environment Server
+colorFrom: gray
+colorTo: red
 sdk: docker
-app_file: server/app.py
 pinned: false
+app_port: 8000
+base_path: /web
+tags:
+  - openenv
 ---
 #  Ticket Env — OpenEnv Environment
 
