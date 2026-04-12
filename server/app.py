@@ -75,14 +75,6 @@ def main(host: str = "0.0.0.0", port: int = 8000):
 
     uvicorn.run(app, host=host, port=port)
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-@app.get("/")
-async def root():
-    return {"message": "Ticket Env running"}
-
 
 if __name__ == "__main__":
     import argparse
