@@ -50,9 +50,9 @@ app = create_app(
     TicketAction,
     TicketObservation,
     env_name="ticket_env",
-    max_concurrent_envs=1,  # increase this number to allow more concurrent WebSocket sessions
+    max_concurrent_envs=1,
+    enable_web=True  
 )
-
 
 def main(host: str = "0.0.0.0", port: int = 8000):
     """
