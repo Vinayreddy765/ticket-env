@@ -1,17 +1,39 @@
 import asyncio
 import os
 import requests
-from typing import List, Dict
+from typing import List
 from openai import OpenAI
 
+# ── LLM proxy — injected by validator 
+API_BASE_URL = os.environ["API_BASE_URL"]
+API_KEY      = os.environ["API_KEY"]
+MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
-# ── Credentials — matching passing participant pattern exactly ─────────────────
-api_key      = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "dummy-key")
-api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-model_name   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+#Env server URL — try multiple options 
+# Validator runs inference.py on their machine, so try:
+# 1. Explicitly set ENV_BASE_URL
+# 2. Their injected env server port 7860 (HF Spaces default)
+# 3. Their injected env server port 8000
+# 4. Your public HF Space
+def find_env_url() -> str:
+    # If explicitly set, use it
+    explicit = os.environ.get("ENV_BASE_URL")
+    if explicit:
+        return explicit
 
-# ── Env server runs inside Docker on localhost:8000 ───────────────────────────
-env_base_url = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+    # Try common ports on localhost (validator might host env locally)
+    for port in [7860, 8000, 8080]:
+        try:
+            res = requests.get(f"http://localhost:{port}/health", timeout=3)
+            if res.status_code == 200:
+                print(f"[DEBUG] Found env server at localhost:{port}", flush=True)
+                return f"http://localhost:{port}"
+        except Exception:
+            pass
+
+    # Fall back to public HF Space
+    print("[DEBUG] Falling back to HF Space URL", flush=True)
+    return "https://vinay3111-ticket-env.hf.space"
 
 TASK_NAME = "ticket-routing"
 BENCHMARK = "ticket_env"
@@ -34,115 +56,58 @@ def safe_parse_agent(text: str) -> int:
     return 3
 
 
-def route_tickets_batch(client: OpenAI, tickets: list) -> Dict[int, int]:
-    ticket_str = "\n".join(
-        [f"{t['id']}: category={t['category']} priority={t.get('priority', 'normal')}"
-         for t in tickets]
-    )
+def route_ticket(client: OpenAI, ticket: dict) -> int:
     prompt = (
-        "You are an intelligent ticket routing system.\n\n"
-        "Routing rules:\n"
-        "  Agent 1 → handles billing issues only\n"
-        "  Agent 2 → handles tech issues only\n"
-        "  Agent 3 → handles both billing and tech\n\n"
-        f"Tickets to route:\n{ticket_str}\n\n"
-        "Return ONLY lines in this exact format (one per ticket):\n"
-        "ticket_id:agent_id\n"
-        "Example:\n"
-        "1:2\n2:1\n3:3\n"
+        "You are a ticket routing assistant.\n"
+        "Agent 1: billing only\n"
+        "Agent 2: tech only\n"
+        "Agent 3: billing and tech\n\n"
+        f"Ticket category: {ticket['category']}\n"
+        "Reply with a single digit: 1, 2, or 3."
     )
     response = client.chat.completions.create(
-        model=model_name,
+        model=MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
-        max_tokens=100,
+        max_tokens=5,
     )
     text = response.choices[0].message.content.strip()
-    print(f"[DEBUG] Batch LLM response:\n{text}", flush=True)
-
-    mapping = {}
-    for line in text.split("\n"):
-        line = line.strip()
-        if ":" in line:
-            parts = line.split(":")
-            try:
-                tid = int(parts[0].strip())
-                aid = safe_parse_agent(parts[1].strip())
-                mapping[tid] = aid
-            except ValueError:
-                continue
-    return mapping
-
-
-def route_ticket_single(client: OpenAI, ticket: dict, retries: int = 2) -> int:
-    prompt = (
-        "You are a smart ticket router.\n"
-        "Rules:\n"
-        "  billing → agent 1\n"
-        "  tech → agent 2\n"
-        "  billing and tech → agent 3\n\n"
-        f"Ticket category: {ticket['category']}\n"
-        f"Priority: {ticket.get('priority', 'normal')}\n\n"
-        "Output ONLY a single digit: 1, 2, or 3."
-    )
-    for attempt in range(retries + 1):
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=10,
-            )
-            text = response.choices[0].message.content.strip()
-            return safe_parse_agent(text)
-        except Exception as e:
-            print(f"[DEBUG] Attempt {attempt + 1} failed: {e}", flush=True)
-    return 3
+    print(f"[DEBUG] LLM response: {repr(text)}", flush=True)
+    return safe_parse_agent(text)
 
 
 async def main():
-    client = OpenAI(base_url=api_base_url, api_key=api_key)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-    print(f"[DEBUG] api_base_url={api_base_url}", flush=True)
-    print(f"[DEBUG] model_name={model_name}", flush=True)
-    print(f"[DEBUG] env_base_url={env_base_url}", flush=True)
+    env_base_url = find_env_url()
+
+    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
+    print(f"[DEBUG] ENV_BASE_URL={env_base_url}", flush=True)
 
     rewards: List[float] = []
-    steps = 0
-    score = 0.0
+    steps   = 0
+    score   = 0.0
     success = False
 
-    log_start(TASK_NAME, BENCHMARK, model_name)
+    log_start(TASK_NAME, BENCHMARK, MODEL_NAME)
 
     try:
-        # Reset env on localhost (inside Docker)
-        print(f"[DEBUG] POST {env_base_url}/reset", flush=True)
+        # Reset env
         res = requests.post(f"{env_base_url}/reset", timeout=30)
         res.raise_for_status()
         body    = res.json()
         obs     = body.get("observation", body)
         tickets = obs.get("tickets", [])
-        print(f"[DEBUG] {len(tickets)} tickets received", flush=True)
-
-        # Route all tickets via LLM proxy
-        batch_mapping = route_tickets_batch(client, tickets)
-        print(f"[DEBUG] Batch mapping: {batch_mapping}", flush=True)
+        print(f"[DEBUG] {len(tickets)} tickets", flush=True)
 
         for i, ticket in enumerate(tickets, 1):
-            tid = ticket["id"]
-
-            if tid in batch_mapping:
-                agent_id = batch_mapping[tid]
-                reason   = "batch-llm"
-            else:
-                agent_id = route_ticket_single(client, ticket)
-                reason   = "single-llm"
-
-            print(f"[DEBUG] Ticket {tid} → agent {agent_id} via {reason}", flush=True)
+            agent_id = route_ticket(client, ticket)
+            print(f"[DEBUG] Ticket {ticket['id']} → agent {agent_id}", flush=True)
 
             res = requests.post(
                 f"{env_base_url}/step",
-                json={"action": {"ticket_id": tid, "agent_id": agent_id}},
+                json={"action": {"ticket_id": ticket["id"], "agent_id": agent_id}},
                 timeout=30,
             )
             res.raise_for_status()
@@ -152,14 +117,14 @@ async def main():
 
             rewards.append(reward)
             steps = i
-
-            log_step(i, f"assign({tid}->{agent_id})[{reason}]", reward, done, None)
+            log_step(i, f"assign({ticket['id']}->{agent_id})", reward, done, None)
 
             if done:
                 break
 
+        # ✅ Score strictly between 0 and 1 (not 0.0, not 1.0)
         raw_score = sum(rewards) / max(len(rewards), 1)
-        score     = min(max(raw_score, 0.0), 0.99)
+        score     = min(max(raw_score, 0.01), 0.99)
         success   = score > 0.5
 
     except Exception as e:
