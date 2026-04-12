@@ -1,10 +1,10 @@
-def grade(trajectory):
-    """
-    Easy Task:
-    Assign tickets to correct agents based on matching category.
-    """
+def easy(trajectory):
+    if not trajectory:
+        return 0.0
 
-    correct = sum(1 for step in trajectory if step.get("reward", 0) > 0)
-    total = len(trajectory)
+    total_reward = sum(step.get("reward", 0) for step in trajectory)
+    max_possible = sum(max(step.get("reward", 0), 0) for step in trajectory)
 
-    return correct / total if total > 0 else 0.0
+    return round(min(total_reward / max_possible, 0.99), 3) if max_possible > 0 else 0.0
+
+

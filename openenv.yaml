@@ -1,9 +1,12 @@
 spec_version: 1
 name: ticket_env
+version: "1.0.0"
+description: "Ticket routing environment — assigns support tickets to agents by skill and priority"
 type: space
 runtime: fastapi
 app: server.app:app
 port: 8000
+inference: inference:main
 
 tasks:
   - name: easy
@@ -14,4 +17,3 @@ tasks:
 
   - name: hard
     grader: tasks.hard:grade
-

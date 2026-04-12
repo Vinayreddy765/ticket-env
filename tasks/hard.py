@@ -1,11 +1,15 @@
-def grade(trajectory):
-    """
-    Hard Task:
-    Complete all assignments correctly; penalize mistakes.
-    """
-
+def hard(trajectory):
     if not trajectory:
         return 0.0
 
+    MAX_TICKETS = 3
+    MAX_REWARD_PER_TICKET = 3.0
+    COMPLETION_BONUS = 1.0
+    MAX_POSSIBLE = (MAX_TICKETS * MAX_REWARD_PER_TICKET) + COMPLETION_BONUS  # 10.0
+
+    total_reward = sum(step.get("reward", 0) for step in trajectory)
     perfect = all(step.get("reward", 0) > 0 for step in trajectory)
-    return 1.0 if perfect else 0.5
+
+    raw_score = max(0.0, min(total_reward / MAX_POSSIBLE, 0.99))
+
+    return round(min(raw_score * 1.2 if perfect else raw_score, 0.99), 3)

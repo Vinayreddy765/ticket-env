@@ -26,20 +26,18 @@ class TicketEnv(
     Each client instance has its own dedicated environment session on the server.
 
     Example:
-        >>> # Connect to a running server
         >>> with TicketEnv(base_url="http://localhost:8000") as client:
         ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+        ...     print(result.observation.tickets)
         ...
-        ...     result = client.step(TicketAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
+        ...     result = client.step(TicketAction(ticket_id=1, agent_id=1))
+        ...     print(result.observation.tickets)
 
     Example with Docker:
-        >>> # Automatically start container and connect
         >>> client = TicketEnv.from_docker_image("ticket_env-env:latest")
         >>> try:
         ...     result = client.reset()
-        ...     result = client.step(TicketAction(message="Test"))
+        ...     result = client.step(TicketAction(ticket_id=1, agent_id=1))
         ... finally:
         ...     client.close()
     """
@@ -55,7 +53,8 @@ class TicketEnv(
             Dictionary representation suitable for JSON encoding
         """
         return {
-            "message": action.message,
+            "ticket_id": action.ticket_id,
+            "agent_id": action.agent_id,
         }
 
     def _parse_result(self, payload: Dict) -> StepResult[TicketObservation]:
@@ -70,16 +69,15 @@ class TicketEnv(
         """
         obs_data = payload.get("observation", {})
         observation = TicketObservation(
-            echoed_message=obs_data.get("echoed_message", ""),
-            message_length=obs_data.get("message_length", 0),
+            tickets=obs_data.get("tickets", []),
+            agents=obs_data.get("agents", []),
             done=payload.get("done", False),
-            reward=payload.get("reward"),
-            metadata=obs_data.get("metadata", {}),
+            reward=payload.get("reward", 0.0),
         )
 
         return StepResult(
             observation=observation,
-            reward=payload.get("reward"),
+            reward=payload.get("reward", 0.0),
             done=payload.get("done", False),
         )
 
