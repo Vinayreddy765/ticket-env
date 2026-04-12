@@ -1,4 +1,4 @@
-def hard(trajectory):
+def grade(trajectory):
     if not trajectory:
         return 0.0
 
