@@ -1,3 +1,12 @@
+---
+title: Ticket Env
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: server/app.py
+pinned: false
+---
 #  Ticket Env — OpenEnv Environment
 
 A reinforcement learning environment where an AI agent routes customer support tickets to the most suitable human agents based on skills and priority.
