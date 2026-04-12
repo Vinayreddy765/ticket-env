@@ -4,7 +4,7 @@ import requests
 from typing import List
 from openai import OpenAI
 
-# ── Exactly as hackathon team instructed ──────────────────────────────────────
+# Exactly as hackathon team instructed 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN     = os.getenv("HF_TOKEN")
@@ -14,7 +14,7 @@ client = OpenAI(
     api_key=HF_TOKEN or "dummy-key"
 )
 
-# ── Env server URL ────────────────────────────────────────────────────────────
+#  Env server URL 
 def find_env_url() -> str:
     explicit = os.environ.get("ENV_BASE_URL")
     if explicit:
